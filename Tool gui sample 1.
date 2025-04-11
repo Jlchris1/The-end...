@@ -1,0 +1,134 @@
+-- LocalScript (StarterPlayerScripts)
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+-- GUI Setup
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ToolTargetingGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Function to create a small button for GUI
+local function createButton(name, position, text, parent)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0, 140, 0, 35)
+    button.Position = position
+    button.Text = text
+    button.Name = name
+    button.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = 16
+    button.Parent = parent
+    return button
+end
+
+-- Button setup
+local startButton = createButton("StartLoop", UDim2.new(1, -150, 0.5, 0), "Start Targeting", screenGui)
+local destroyButton = createButton("DestroyGUI", UDim2.new(1, -150, 0.55, 0), "Destroy GUI", screenGui)
+
+-- State Variables
+local running = false
+local currentTargetIndex = 1
+local targets = {}
+
+-- Check if a target is valid
+local function isValidTarget(target)
+    if not target:IsA("Model") then return false end
+    local humanoid = target:FindFirstChildOfClass("Humanoid")
+    local hrp = target:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp then return false end
+
+    local isPlayer = Players:GetPlayerFromCharacter(target)
+    if isPlayer then
+        if isPlayer == player then return false end
+        return true
+    end
+    return false
+end
+
+-- Function to align the tool to the target using Grip properties
+local function alignGripToTarget(tool, targetHRP)
+    if not tool:IsA("Tool") then return end
+    local targetCF = targetHRP.CFrame
+    local char = player.Character
+    if not char then return end
+
+    local rightHand = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
+    if not rightHand then return end
+
+    local relative = rightHand.CFrame:toObjectSpace(targetCF)
+
+    -- Extract position and rotation from the relative CFrame
+    tool.GripPos = relative.Position
+    tool.GripForward = -relative.LookVector
+    tool.GripRight = relative.RightVector
+    tool.GripUp = relative.UpVector
+end
+
+-- Function to gather valid targets
+local function gatherTargets()
+    targets = {}
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if isValidTarget(obj) then
+            local hrp = obj:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                table.insert(targets, hrp)
+            end
+        end
+    end
+end
+
+-- Main Targeting Loop (switches target every 0.1 seconds)
+local function startTargetingLoop()
+    coroutine.wrap(function()
+        while running do
+            -- Gather targets every time in case new players are added
+            gatherTargets()
+            
+            if #targets > 0 then
+                local tool = nil
+                if player.Character then
+                    for _, item in ipairs(player.Character:GetChildren()) do
+                        if item:IsA("Tool") then
+                            tool = item
+                            break
+                        end
+                    end
+                end
+
+                -- Only proceed if we have a tool and valid targets
+                if tool and #targets > 0 then
+                    -- Get the current target based on the index
+                    local targetHRP = targets[currentTargetIndex]
+                    if targetHRP then
+                        alignGripToTarget(tool, targetHRP)
+                    end
+
+                    -- Move to the next target in the list (loop back if at the end)
+                    currentTargetIndex = currentTargetIndex + 1
+                    if currentTargetIndex > #targets then
+                        currentTargetIndex = 1
+                    end
+                end
+            end
+
+            wait(0.1)  -- Switch targets every 0.1 seconds
+        end
+    end)()
+end
+
+-- Button Actions
+startButton.MouseButton1Click:Connect(function()
+    running = not running
+    startButton.Text = running and "Stop Targeting" or "Start Targeting"
+    startButton.BackgroundColor3 = running and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(50, 150, 255)
+    if running then
+        startTargetingLoop()
+    end
+end)
+
+destroyButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
